@@ -11,3 +11,6 @@
 	path = OpenHD/ohd_interface/lib/wifibroadcast
 	url = https://github.com/OpenHD/wifibroadcast.git
 	branch = consti-dev
+[submodule "OpenHD/ohd_interface/lib/sbus"]
+	path = OpenHD/ohd_interface/lib/sbus
+	url = https://github.com/Carbon225/raspberry-sbus.git
