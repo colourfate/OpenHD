@@ -12,4 +12,4 @@ cd build
 #ninja
 
 cmake ..
-make -j$(nproc)
+make -j2
