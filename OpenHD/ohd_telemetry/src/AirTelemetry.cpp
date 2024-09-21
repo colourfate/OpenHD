@@ -17,6 +17,7 @@ AirTelemetry::AirTelemetry() : MavlinkSystem(OHD_SYS_ID_AIR) {
   assert(m_console);
   m_air_settings = std::make_unique<openhd::telemetry::air::SettingsHolder>();
   m_fc_serial = std::make_unique<SerialEndpointManager>();
+  m_sbus = std::make_unique<SBUS>();
   m_ohd_main_component = std::make_shared<OHDMainComponent>(_sys_id, true);
   m_components.push_back(m_ohd_main_component);
   //
@@ -40,6 +41,7 @@ AirTelemetry::AirTelemetry() : MavlinkSystem(OHD_SYS_ID_AIR) {
         });
   }
   setup_uart();
+  setup_sbus();
   m_console->debug("Created AirTelemetry");
 }
 
@@ -51,6 +53,51 @@ void AirTelemetry::send_messages_fc(std::vector<MavlinkMessage>& messages) {
   // NOTE: Remember there is a hack in place for rc channels override in regards
   // to the sender sys id
   m_fc_serial->send_messages_if_enabled(generic);
+}
+
+void AirTelemetry::send_sbus_rc(std::vector<MavlinkMessage>& rc_msgs) {
+  auto [generic,local_only] = split_into_generic_and_local_only(rc_msgs,OHD_SYS_ID_AIR);
+  // NOTE: Remember there is a hack in place for rc channels override in regards to the sender sys id
+  m_console->debug("ready to send local msg, len: {}", generic.size());
+  for (const auto& msg : generic) {
+    sbus_err_t err = m_sbus->read();
+    if (err == SBUS_FAIL) {
+      m_console->error("read sbus failed");
+      continue;
+    } else if (err == SBUS_ERR_DESYNC) {
+      m_console->warn("sbus desync");
+    }
+
+    mavlink_rc_channels_override_t rc_channels;
+    mavlink_msg_rc_channels_override_decode(&msg.m, &rc_channels);
+
+    sbus_packet_t packet = {
+      .failsafe = true,
+      .frameLost = false,
+    };
+
+    //cout << "ch" << i + 1 << ": " << tmp[i] << "    ";
+    packet.channels[0] = rc_channels.chan1_raw;
+    packet.channels[1] = rc_channels.chan2_raw;
+    packet.channels[2] = rc_channels.chan3_raw;
+    packet.channels[3] = rc_channels.chan4_raw;
+    packet.channels[4] = rc_channels.chan5_raw;
+    packet.channels[5] = rc_channels.chan6_raw;
+    packet.channels[6] = rc_channels.chan7_raw;
+    packet.channels[7] = rc_channels.chan8_raw;
+    packet.channels[8] = rc_channels.chan9_raw;
+    packet.channels[9] = rc_channels.chan10_raw;
+    packet.channels[10] = rc_channels.chan11_raw;
+    packet.channels[11] = rc_channels.chan12_raw;
+    packet.channels[12] = rc_channels.chan13_raw;
+    packet.channels[13] = rc_channels.chan14_raw;
+    packet.channels[14] = rc_channels.chan15_raw;
+    packet.channels[15] = rc_channels.chan16_raw;
+    packet.ch17 = rc_channels.chan17_raw;
+    packet.ch18 = rc_channels.chan18_raw;
+
+    m_sbus->write(packet);
+  }
 }
 
 void AirTelemetry::send_messages_ground_unit(
@@ -89,14 +136,22 @@ void AirTelemetry::on_messages_ground_unit(
   //   filter out heartbeats from the openhd ground unit,we do not need to send
   //   them to the FC
   std::vector<MavlinkMessage> filtered_messages_fc;
+  std::vector<MavlinkMessage> filtered_messages_rc;
+
+  m_console->debug("============= Get message from ground unit ==============");
   for (const auto& msg : messages) {
     const mavlink_message_t& m = msg.m;
+    m_console->debug("--> msgid: {}, sysid: {}", m.msgid, m.sysid);
     if (static_cast<int>(m.msgid) == MAVLINK_MSG_ID_HEARTBEAT &&
         m.sysid == OHD_SYS_ID_GROUND)
       continue;
+    if (static_cast<int>(m.msgid) == MAVLINK_MSG_ID_RC_CHANNELS_OVERRIDE) {
+      filtered_messages_rc.push_back(msg);
+    }
     filtered_messages_fc.push_back(msg);
   }
   send_messages_fc(filtered_messages_fc);
+  send_sbus_rc(filtered_messages_rc);
   // any data created by an OpenHD component on the air pi only needs to be sent
   // to the ground pi, the FC cannot do anything with it anyways.
   std::lock_guard<std::mutex> guard(m_components_lock);
@@ -271,6 +326,33 @@ void AirTelemetry::setup_uart() {
                            });
   } else {
     m_fc_serial->disable();
+  }
+}
+
+static void packet_handle(const sbus_packet_t &packet)
+{
+  using namespace std;
+  for (int i = 0; i < 16; ++i)
+    cout << "ch" << i + 1 << ": " << packet.channels[i] << "    ";
+
+  cout << "ch17: " << (packet.ch17 ? "true" : "false") << "    "
+    << "ch18: " << (packet.ch18 ? "true" : "false");
+
+  if (packet.frameLost)
+    cout << "    Frame lost";
+
+  if (packet.failsafe)
+    cout << "    Failsafe active";
+
+  cout << endl;
+}
+
+void AirTelemetry::setup_sbus() {
+  m_sbus->onPacket(packet_handle);
+  sbus_err_t err = m_sbus->install("/dev/ttyAMA3", false);
+  if (err != SBUS_OK) {
+      m_console->error("sbus install failed: {}", err);
+      return;
   }
 }
 

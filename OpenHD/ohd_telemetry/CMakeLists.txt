@@ -8,6 +8,7 @@ add_library(OHDTelemetryLib::OHDTelemetryLib ALIAS OHDTelemetryLib)
 
 # Only needed when building this submodule manually
 add_subdirectory(../ohd_common commonlib EXCLUDE_FROM_ALL)
+add_subdirectory(../ohd_interface/lib/sbus sbus_binary_dir)
 
 find_package(Threads REQUIRED)
 target_link_libraries(OHDTelemetryLib PUBLIC Threads::Threads)
@@ -115,6 +116,7 @@ target_include_directories(OHDTelemetryLib
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
 
 target_link_libraries(OHDTelemetryLib PUBLIC OHDCommonLib)
+target_link_libraries(OHDTelemetryLib PUBLIC libsbus)
 
 # include mavlink (header-only)
 add_library(mavlink INTERFACE)

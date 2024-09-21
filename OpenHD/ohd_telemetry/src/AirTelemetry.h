@@ -22,6 +22,7 @@
 #include "openhd_action_handler.h"
 #include "openhd_link.hpp"
 #include "openhd_spdlog.h"
+#include "../../ohd_interface/lib/sbus/src/driver/include/SBUS.h"
 
 /**
  * OpenHD Air telemetry. Assumes a Ground instance running on the ground pi.
@@ -71,6 +72,7 @@ class AirTelemetry : public MavlinkSystem {
   // send a mavlink message to the flight controller connected to the air unit
   // via UART, if connected.
   void send_messages_fc(std::vector<MavlinkMessage>& messages);
+  void send_sbus_rc(std::vector<MavlinkMessage>& messages);
   // send mavlink messages to the ground unit, lossy
   void send_messages_ground_unit(std::vector<MavlinkMessage>& messages);
   // called every time one or more messages from the flight controller are
@@ -81,10 +83,12 @@ class AirTelemetry : public MavlinkSystem {
   // R.N only on air, and only FC uart settings
   std::vector<openhd::Setting> get_all_settings();
   void setup_uart();
+  void setup_sbus();
 
  private:
   std::unique_ptr<openhd::telemetry::air::SettingsHolder> m_air_settings;
   std::unique_ptr<SerialEndpointManager> m_fc_serial;
+  std::unique_ptr<SBUS> m_sbus;
   // send/receive data via wb
   std::unique_ptr<WBEndpoint> m_wb_endpoint;
   // shared because we also push it onto our components list
